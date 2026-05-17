@@ -1,0 +1,14 @@
+{
+  "name": "local-produce-platform",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "node backend/index.js",
+    "dev:client": "cd frontend && npm run dev",
+    "seed": "node backend/db/seed.js",
+    "install:all": "cd backend && npm install && cd ../frontend && npm install"
+  },
+  "dependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
