@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { initializeDatabase } = require('./db/database');
+const { connectDB } = require('./db/database');
 
 const authRoutes = require('./routes/auth');
 const listingRoutes = require('./routes/listings');
@@ -13,8 +13,6 @@ const dashboardRoutes = require('./routes/dashboard');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-
-initializeDatabase();
 
 app.use(cors());
 app.use(express.json());
@@ -34,6 +32,13 @@ app.get('*', (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+connectDB()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error('Failed to connect to MongoDB:', err.message);
+    process.exit(1);
+  });

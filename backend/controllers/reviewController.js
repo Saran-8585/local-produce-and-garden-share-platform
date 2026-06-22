@@ -1,6 +1,8 @@
-const { db } = require('../db/database');
+const Review = require('../models/Review');
+const ExchangeRequest = require('../models/ExchangeRequest');
+const User = require('../models/User');
 
-exports.createReview = (req, res) => {
+exports.createReview = async (req, res) => {
   try {
     const { exchange_id, reviewee_id, rating, comment } = req.body;
 
@@ -16,63 +18,74 @@ exports.createReview = (req, res) => {
       return res.status(400).json({ error: 'Cannot review yourself' });
     }
 
-    const exchange = db.prepare(
-      "SELECT * FROM exchange_requests WHERE id = ? AND status = 'Completed'"
-    ).get(exchange_id);
-
+    const exchange = await ExchangeRequest.findOne({ _id: exchange_id, status: 'Completed' });
     if (!exchange) {
       return res.status(404).json({ error: 'Completed exchange not found' });
     }
 
-    if (exchange.requester_id !== req.user.id && exchange.owner_id !== req.user.id) {
+    if (exchange.requester.toString() !== req.user.id && exchange.owner.toString() !== req.user.id) {
       return res.status(403).json({ error: 'Not part of this exchange' });
     }
 
-    if (exchange.requester_id !== reviewee_id && exchange.owner_id !== reviewee_id) {
+    if (exchange.requester.toString() !== reviewee_id && exchange.owner.toString() !== reviewee_id) {
       return res.status(400).json({ error: 'Reviewee must be the other party in the exchange' });
     }
 
-    const existing = db.prepare(
-      'SELECT id FROM reviews WHERE exchange_id = ? AND reviewer_id = ? AND reviewee_id = ?'
-    ).get(exchange_id, req.user.id, reviewee_id);
+    const existing = await Review.findOne({
+      exchange: exchange_id,
+      reviewer: req.user.id,
+      reviewee: reviewee_id,
+    });
 
     if (existing) {
       return res.status(400).json({ error: 'You have already reviewed this exchange' });
     }
 
-    const result = db.prepare(
-      'INSERT INTO reviews (exchange_id, reviewer_id, reviewee_id, rating, comment) VALUES (?, ?, ?, ?, ?)'
-    ).run(exchange_id, req.user.id, reviewee_id, rating, comment || '');
+    const review = await Review.create({
+      exchange: exchange_id,
+      reviewer: req.user.id,
+      reviewee: reviewee_id,
+      rating,
+      comment: comment || '',
+    });
 
-    const avgRating = db.prepare(
-      'SELECT AVG(rating) as avg, COUNT(*) as count FROM reviews WHERE reviewee_id = ?'
-    ).get(reviewee_id);
+    const stats = await Review.aggregate([
+      { $match: { reviewee: review.reviewee } },
+      { $group: { _id: null, avg: { $avg: '$rating' }, count: { $sum: 1 } } },
+    ]);
 
-    db.prepare(
-      'UPDATE users SET avg_rating = ?, total_reviews = ? WHERE id = ?'
-    ).run(avgRating.avg || 0, avgRating.count || 0, reviewee_id);
+    const { avg = 0, count = 0 } = stats[0] || {};
+    await User.findByIdAndUpdate(reviewee_id, { avg_rating: Math.round(avg * 10) / 10, total_reviews: count });
 
-    const review = db.prepare('SELECT * FROM reviews WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json(review);
   } catch (err) {
+    if (err.code === 11000) {
+      return res.status(400).json({ error: 'You have already reviewed this exchange' });
+    }
     res.status(500).json({ error: 'Failed to create review' });
   }
 };
 
-exports.getUserReviews = (req, res) => {
+exports.getUserReviews = async (req, res) => {
   try {
-    const reviews = db.prepare(`
-      SELECT r.*, reviewer.name as reviewer_name, reviewer.neighbourhood as reviewer_neighbourhood,
-             er.listing_id, l.produce_name
-      FROM reviews r
-      JOIN users reviewer ON r.reviewer_id = reviewer.id
-      JOIN exchange_requests er ON r.exchange_id = er.id
-      JOIN listings l ON er.listing_id = l.id
-      WHERE r.reviewee_id = ?
-      ORDER BY r.created_at DESC
-    `).all(req.params.userId);
+    const reviews = await Review.find({ reviewee: req.params.userId })
+      .populate('reviewer', 'name neighbourhood')
+      .populate({
+        path: 'exchange',
+        select: 'listing',
+        populate: { path: 'listing', select: 'produce_name' },
+      })
+      .sort({ created_at: -1 });
 
-    res.json(reviews);
+    const enhanced = reviews.map(r => ({
+      ...r.toJSON(),
+      reviewer_name: r.reviewer ? r.reviewer.name : null,
+      reviewer_neighbourhood: r.reviewer ? r.reviewer.neighbourhood : null,
+      listing_id: r.exchange && r.exchange.listing ? r.exchange.listing.id : null,
+      produce_name: r.exchange && r.exchange.listing ? r.exchange.listing.produce_name : null,
+    }));
+
+    res.json(enhanced);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch reviews' });
   }

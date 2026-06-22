@@ -1,6 +1,8 @@
-const { db } = require('../db/database');
+const ExchangeRequest = require('../models/ExchangeRequest');
+const Listing = require('../models/Listing');
+const User = require('../models/User');
 
-exports.createRequest = (req, res) => {
+exports.createRequest = async (req, res) => {
   try {
     const { listing_id, message, offered_listing_id } = req.body;
 
@@ -8,12 +10,12 @@ exports.createRequest = (req, res) => {
       return res.status(400).json({ error: 'Listing ID is required' });
     }
 
-    const listing = db.prepare('SELECT * FROM listings WHERE id = ?').get(listing_id);
+    const listing = await Listing.findById(listing_id);
     if (!listing) {
       return res.status(404).json({ error: 'Listing not found' });
     }
 
-    if (listing.user_id === req.user.id) {
+    if (listing.user.toString() === req.user.id) {
       return res.status(400).json({ error: 'Cannot request your own listing' });
     }
 
@@ -26,11 +28,11 @@ exports.createRequest = (req, res) => {
     }
 
     if (offered_listing_id) {
-      const offered = db.prepare('SELECT * FROM listings WHERE id = ?').get(offered_listing_id);
+      const offered = await Listing.findById(offered_listing_id);
       if (!offered) {
         return res.status(404).json({ error: 'Offered listing not found' });
       }
-      if (offered.user_id !== req.user.id) {
+      if (offered.user.toString() !== req.user.id) {
         return res.status(400).json({ error: 'Offered listing must belong to you' });
       }
       if (offered.status !== 'Available') {
@@ -38,155 +40,178 @@ exports.createRequest = (req, res) => {
       }
     }
 
-    const existing = db.prepare(
-      "SELECT id FROM exchange_requests WHERE listing_id = ? AND requester_id = ? AND status IN ('Pending','Accepted')"
-    ).get(listing_id, req.user.id);
+    const existing = await ExchangeRequest.findOne({
+      listing: listing_id,
+      requester: req.user.id,
+      status: { $in: ['Pending', 'Accepted'] },
+    });
+
     if (existing) {
       return res.status(400).json({ error: 'You already have a pending request for this listing' });
     }
 
-    const result = db.prepare(
-      "INSERT INTO exchange_requests (listing_id, requester_id, owner_id, message, offered_listing_id, status) VALUES (?, ?, ?, ?, ?, 'Pending')"
-    ).run(listing_id, req.user.id, listing.user_id, message || '', offered_listing_id || null);
+    const request = await ExchangeRequest.create({
+      listing: listing_id,
+      requester: req.user.id,
+      owner: listing.user,
+      message: message || '',
+      offered_listing: offered_listing_id || null,
+      status: 'Pending',
+    });
 
-    const request = db.prepare('SELECT * FROM exchange_requests WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json(request);
   } catch (err) {
     res.status(500).json({ error: 'Failed to create request' });
   }
 };
 
-exports.getSentRequests = (req, res) => {
+exports.getSentRequests = async (req, res) => {
   try {
-    const requests = db.prepare(`
-      SELECT er.*, l.produce_name, l.category, l.exchange_type,
-             u.name as owner_name, u.neighbourhood as owner_neighbourhood,
-             ol.produce_name as offered_produce_name
-      FROM exchange_requests er
-      JOIN listings l ON er.listing_id = l.id
-      JOIN users u ON er.owner_id = u.id
-      LEFT JOIN listings ol ON er.offered_listing_id = ol.id
-      WHERE er.requester_id = ?
-      ORDER BY er.created_at DESC
-    `).all(req.user.id);
+    const requests = await ExchangeRequest.find({ requester: req.user.id })
+      .populate('listing', 'produce_name category exchange_type')
+      .populate('owner', 'name neighbourhood')
+      .populate('offered_listing', 'produce_name')
+      .sort({ created_at: -1 });
 
-    res.json(requests);
+    const enhanced = requests.map(r => ({
+      ...r.toJSON(),
+      listing_id: r.listing ? r.listing.id : null,
+      produce_name: r.listing ? r.listing.produce_name : null,
+      category: r.listing ? r.listing.category : null,
+      exchange_type: r.listing ? r.listing.exchange_type : null,
+      owner_name: r.owner ? r.owner.name : null,
+      owner_neighbourhood: r.owner ? r.owner.neighbourhood : null,
+      offered_produce_name: r.offered_listing ? r.offered_listing.produce_name : null,
+    }));
+
+    res.json(enhanced);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch sent requests' });
   }
 };
 
-exports.getReceivedRequests = (req, res) => {
+exports.getReceivedRequests = async (req, res) => {
   try {
-    const requests = db.prepare(`
-      SELECT er.*, l.produce_name, l.category, l.exchange_type,
-             u.name as requester_name, u.neighbourhood as requester_neighbourhood,
-             ol.produce_name as offered_produce_name
-      FROM exchange_requests er
-      JOIN listings l ON er.listing_id = l.id
-      JOIN users u ON er.requester_id = u.id
-      LEFT JOIN listings ol ON er.offered_listing_id = ol.id
-      WHERE er.owner_id = ?
-      ORDER BY er.created_at DESC
-    `).all(req.user.id);
+    const requests = await ExchangeRequest.find({ owner: req.user.id })
+      .populate('listing', 'produce_name category exchange_type')
+      .populate('requester', 'name neighbourhood')
+      .populate('offered_listing', 'produce_name')
+      .sort({ created_at: -1 });
 
-    res.json(requests);
+    const enhanced = requests.map(r => ({
+      ...r.toJSON(),
+      listing_id: r.listing ? r.listing.id : null,
+      produce_name: r.listing ? r.listing.produce_name : null,
+      category: r.listing ? r.listing.category : null,
+      exchange_type: r.listing ? r.listing.exchange_type : null,
+      requester_name: r.requester ? r.requester.name : null,
+      requester_neighbourhood: r.requester ? r.requester.neighbourhood : null,
+      offered_produce_name: r.offered_listing ? r.offered_listing.produce_name : null,
+    }));
+
+    res.json(enhanced);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch received requests' });
   }
 };
 
-exports.acceptRequest = (req, res) => {
+exports.acceptRequest = async (req, res) => {
   try {
-    const request = db.prepare('SELECT * FROM exchange_requests WHERE id = ?').get(req.params.id);
+    const request = await ExchangeRequest.findById(req.params.id);
     if (!request) {
       return res.status(404).json({ error: 'Request not found' });
     }
-    if (request.owner_id !== req.user.id) {
+    if (request.owner.toString() !== req.user.id) {
       return res.status(403).json({ error: 'Only the listing owner can accept requests' });
     }
     if (request.status !== 'Pending') {
       return res.status(400).json({ error: 'Can only accept pending requests' });
     }
 
-    db.prepare("UPDATE exchange_requests SET status = 'Accepted', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(req.params.id);
+    request.status = 'Accepted';
+    await request.save();
 
-    if (request.offered_listing_id) {
-      db.prepare("UPDATE listings SET status = 'Unavailable' WHERE id = ?").run(request.offered_listing_id);
+    if (request.offered_listing) {
+      await Listing.findByIdAndUpdate(request.offered_listing, { status: 'Unavailable' });
     }
-    db.prepare("UPDATE listings SET status = 'Unavailable' WHERE id = ?").run(request.listing_id);
+    await Listing.findByIdAndUpdate(request.listing, { status: 'Unavailable' });
 
-    const updated = db.prepare('SELECT * FROM exchange_requests WHERE id = ?').get(req.params.id);
-    res.json(updated);
+    res.json(request);
   } catch (err) {
     res.status(500).json({ error: 'Failed to accept request' });
   }
 };
 
-exports.declineRequest = (req, res) => {
+exports.declineRequest = async (req, res) => {
   try {
-    const request = db.prepare('SELECT * FROM exchange_requests WHERE id = ?').get(req.params.id);
+    const request = await ExchangeRequest.findById(req.params.id);
     if (!request) {
       return res.status(404).json({ error: 'Request not found' });
     }
-    if (request.owner_id !== req.user.id) {
+    if (request.owner.toString() !== req.user.id) {
       return res.status(403).json({ error: 'Only the listing owner can decline requests' });
     }
     if (request.status !== 'Pending') {
       return res.status(400).json({ error: 'Can only decline pending requests' });
     }
 
-    db.prepare("UPDATE exchange_requests SET status = 'Declined', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(req.params.id);
-    const updated = db.prepare('SELECT * FROM exchange_requests WHERE id = ?').get(req.params.id);
-    res.json(updated);
+    request.status = 'Declined';
+    await request.save();
+
+    res.json(request);
   } catch (err) {
     res.status(500).json({ error: 'Failed to decline request' });
   }
 };
 
-exports.completeRequest = (req, res) => {
+exports.completeRequest = async (req, res) => {
   try {
-    const request = db.prepare('SELECT * FROM exchange_requests WHERE id = ?').get(req.params.id);
+    const request = await ExchangeRequest.findById(req.params.id);
     if (!request) {
       return res.status(404).json({ error: 'Request not found' });
     }
-    if (request.requester_id !== req.user.id && request.owner_id !== req.user.id) {
+    if (request.requester.toString() !== req.user.id && request.owner.toString() !== req.user.id) {
       return res.status(403).json({ error: 'Not authorized' });
     }
     if (request.status !== 'Accepted') {
       return res.status(400).json({ error: 'Can only complete accepted requests' });
     }
 
-    db.prepare("UPDATE exchange_requests SET status = 'Completed', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(req.params.id);
+    request.status = 'Completed';
+    await request.save();
 
-    db.prepare('UPDATE users SET total_exchanges = (SELECT COUNT(*) FROM exchange_requests WHERE (requester_id = ? OR owner_id = ?) AND status = \'Completed\') WHERE id = ?').run(req.user.id, req.user.id, req.user.id);
+    const userIds = [request.requester.toString(), request.owner.toString()];
+    for (const uid of userIds) {
+      const totalExchanges = await ExchangeRequest.countDocuments({
+        $or: [{ requester: uid }, { owner: uid }],
+        status: 'Completed',
+      });
+      await User.findByIdAndUpdate(uid, { total_exchanges: totalExchanges });
+    }
 
-    const otherUserId = request.requester_id === req.user.id ? request.owner_id : request.requester_id;
-    db.prepare('UPDATE users SET total_exchanges = (SELECT COUNT(*) FROM exchange_requests WHERE (requester_id = ? OR owner_id = ?) AND status = \'Completed\') WHERE id = ?').run(otherUserId, otherUserId, otherUserId);
-
-    const updated = db.prepare('SELECT * FROM exchange_requests WHERE id = ?').get(req.params.id);
-    res.json(updated);
+    res.json(request);
   } catch (err) {
     res.status(500).json({ error: 'Failed to complete request' });
   }
 };
 
-exports.cancelRequest = (req, res) => {
+exports.cancelRequest = async (req, res) => {
   try {
-    const request = db.prepare('SELECT * FROM exchange_requests WHERE id = ?').get(req.params.id);
+    const request = await ExchangeRequest.findById(req.params.id);
     if (!request) {
       return res.status(404).json({ error: 'Request not found' });
     }
-    if (request.requester_id !== req.user.id) {
+    if (request.requester.toString() !== req.user.id) {
       return res.status(403).json({ error: 'Only the requester can cancel' });
     }
     if (request.status !== 'Pending') {
       return res.status(400).json({ error: 'Can only cancel pending requests' });
     }
 
-    db.prepare("UPDATE exchange_requests SET status = 'Cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(req.params.id);
-    const updated = db.prepare('SELECT * FROM exchange_requests WHERE id = ?').get(req.params.id);
-    res.json(updated);
+    request.status = 'Cancelled';
+    await request.save();
+
+    res.json(request);
   } catch (err) {
     res.status(500).json({ error: 'Failed to cancel request' });
   }

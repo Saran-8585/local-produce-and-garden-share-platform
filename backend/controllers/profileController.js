@@ -1,34 +1,27 @@
-const { db } = require('../db/database');
+const User = require('../models/User');
 
-exports.getProfile = (req, res) => {
+exports.getProfile = async (req, res) => {
   try {
-    const user = db.prepare(`
-      SELECT id, name, email, neighbourhood, bio, avg_rating, total_reviews, total_listings, total_exchanges, created_at
-      FROM users WHERE id = ?
-    `).get(req.params.id);
-
+    const user = await User.findById(req.params.id).select('-password');
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
-
     res.json(user);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch profile' });
   }
 };
 
-exports.updateProfile = (req, res) => {
+exports.updateProfile = async (req, res) => {
   try {
     const { name, neighbourhood, bio } = req.body;
 
-    db.prepare(
-      'UPDATE users SET name = COALESCE(?, name), neighbourhood = COALESCE(?, neighbourhood), bio = COALESCE(?, bio) WHERE id = ?'
-    ).run(name || null, neighbourhood || null, bio !== undefined ? bio : null, req.user.id);
+    const updates = {};
+    if (name !== undefined) updates.name = name;
+    if (neighbourhood !== undefined) updates.neighbourhood = neighbourhood;
+    if (bio !== undefined) updates.bio = bio;
 
-    const user = db.prepare(
-      'SELECT id, name, email, neighbourhood, bio, avg_rating, total_reviews, total_listings, total_exchanges, created_at FROM users WHERE id = ?'
-    ).get(req.user.id);
-
+    const user = await User.findByIdAndUpdate(req.user.id, updates, { new: true }).select('-password');
     res.json(user);
   } catch (err) {
     res.status(500).json({ error: 'Failed to update profile' });
