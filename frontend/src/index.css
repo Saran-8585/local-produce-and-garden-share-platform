@@ -31,6 +31,3 @@ body {
   flex-direction: column;
 }
 
-.leaflet-container {
-  border-radius: 0.75rem;
-}

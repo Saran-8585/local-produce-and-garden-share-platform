@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Leaf, Search, MapIcon, Grid3X3, SlidersHorizontal, Sprout } from 'lucide-react';
+import { Leaf, Search, SlidersHorizontal, Sprout } from 'lucide-react';
 import api from '../utils/api';
 import { useAuth } from '../hooks/useAuth';
 import ListingCard from '../components/ListingCard';
-import MapView from '../components/MapView';
 import LoadingSkeleton from '../components/LoadingSkeleton';
 import EmptyState from '../components/EmptyState';
 
@@ -16,7 +15,6 @@ export default function Browse() {
   const navigate = useNavigate();
   const [listings, setListings] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState('grid');
   const [filters, setFilters] = useState({
     category: 'All',
     exchange_type: 'All',
@@ -98,14 +96,7 @@ export default function Browse() {
                 className="pl-9 pr-3 py-2 rounded-xl border border-gray-200 text-sm focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none w-48 md:w-56"
               />
             </div>
-            <button onClick={() => setViewMode('grid')}
-              className={`p-2 rounded-lg ${viewMode === 'grid' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-500'}`}>
-              <Grid3X3 size={18} />
-            </button>
-            <button onClick={() => setViewMode('map')}
-              className={`p-2 rounded-lg ${viewMode === 'map' ? 'bg-primary text-white' : 'bg-gray-100 text-gray-500'}`}>
-              <MapIcon size={18} />
-            </button>
+
             {user && (
               <Link to="/listings/new"
                 className="px-4 py-2 bg-primary text-white rounded-xl text-sm font-medium hover:bg-primary-dark transition-colors">
@@ -142,8 +133,6 @@ export default function Browse() {
 
         {loading ? (
           <LoadingSkeleton count={6} />
-        ) : viewMode === 'map' ? (
-          <MapView listings={listings} height="600px" />
         ) : listings.length === 0 ? (
           <EmptyState
             icon={Sprout}

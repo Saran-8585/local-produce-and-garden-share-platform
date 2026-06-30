@@ -4,82 +4,17 @@ A community platform where home gardeners can list surplus fruits, vegetables, h
 
 ## Tech Stack
 
-- **Frontend**: React 19 + Vite + Tailwind CSS + Leaflet
+- **Frontend**: React 19 + Vite + Tailwind CSS 4
 - **Backend**: Node.js + Express + SQLite (better-sqlite3)
 - **Auth**: JWT (JSON Web Tokens)
-- **Maps**: Leaflet.js + React Leaflet (free, no API key)
-
-## Project Structure
-
-```
-├── backend/           # Express API server
-│   ├── controllers/   # Route handlers
-│   ├── routes/        # API routes
-│   ├── middleware/     # JWT auth middleware
-│   ├── db/            # Database + seed script
-│   └── index.js       # Entry point
-├── frontend/          # React + Vite app
-│   └── src/
-│       ├── components/ # Shared UI components
-│       ├── pages/      # Page components
-│       ├── context/    # Auth context
-│       ├── hooks/      # Custom hooks
-│       └── utils/      # Axios instance & helpers
-├── data/              # Reserved directory
-└── package.json       # Root scripts
-```
-
-## Setup
-
-### 1. Install dependencies
-
-```bash
-npm run install:all
-```
-
-### 2. Seed the database
-
-```bash
-npm run seed
-```
-
-### 3. Start development servers
-
-```bash
-npm run dev
-```
-
-This starts both:
-- Backend API on `http://localhost:5000`
-- Frontend dev server on `http://localhost:5173`
-
-### 4. Open the app
-
-Navigate to **http://localhost:5173** in your browser.
-
-## Test Credentials
-
-| Email | Password |
-|---|---|
-| priya@garden.com | garden123 |
-| arjun@garden.com | garden123 |
-
-Additional users: lakshmi, ravi, ananya, vikram, meera, suresh, divya, karthik, pooja, rajeshwari (all @garden.com / garden123)
-
-## Seed Data
-
-- 12 users (Indian names, Bangalore neighbourhoods)
-- 35 produce/plant listings across all categories
-- 20 exchange requests in various statuses
-- 10 completed reviews
+- **Icons**: Lucide React
 
 ## Features
 
 - Browse produce listings with filters (category, exchange type, neighbourhood, availability)
 - Search listings with debounced input
-- Map view with colour-coded markers
 - User registration & JWT-based login
-- Create/edit/delete listings with location picker
+- Create/edit/delete listings with neighbourhood location
 - Request produce (Free / Swap / Both exchange types)
 - Manage sent and received exchange requests
 - Accept, decline, cancel, and complete exchanges
@@ -89,6 +24,77 @@ Additional users: lakshmi, ravi, ananya, vikram, meera, suresh, divya, karthik, 
 - Seasonal availability calendar (Bangalore region)
 - Responsive design (desktop + tablet)
 
+## Setup
+
+**Prerequisites:** Node.js 20+
+
+```bash
+# 1. Install dependencies
+npm run install:all
+
+# 2. Seed the database
+npm run seed
+
+# 3. Start development servers (backend + frontend with HMR)
+npm run dev
+```
+
+> No external database required — SQLite is embedded.
+
+The backend API runs on `http://localhost:5000` and the frontend dev server on `http://localhost:5173`. Open `http://localhost:5173` in your browser. The Vite dev server proxies `/api/*` requests to the backend.
+
+## Project Structure
+
+```
+├── backend/
+│   ├── controllers/     # Express route handlers
+│   ├── data/            # SQLite database file (auto-created)
+│   ├── db/              # Database connection + seed script
+│   ├── middleware/       # JWT auth middleware
+│   ├── models/          # SQLite query modules (User, Listing, ExchangeRequest, Review)
+│   ├── routes/          # Express route definitions
+│   ├── .env             # Environment variables
+│   └── index.js         # Express entry point
+├── frontend/
+│   └── src/
+│       ├── components/  # Shared UI components (ListingCard, Navbar, etc.)
+│       ├── pages/       # Page components (Browse, ListingDetail, Login, etc.)
+│       ├── context/     # Auth context provider
+│       ├── hooks/       # Custom hooks (useAuth)
+│       └── utils/       # Axios config, helper functions
+└── package.json         # Root scripts (dev, seed, install)
+```
+
+## Environment Variables
+
+Backend environment variables are in `backend/.env`:
+
+| Variable | Default | Description |
+|---|---|---|
+| `PORT` | `5000` | Backend server port |
+| `JWT_SECRET` | *(required)* | Secret key for JWT signing |
+| `SQLITE_PATH` | `./data/database.sqlite` | SQLite database file path |
+
+## Test Credentials
+
+After seeding, use any of these accounts:
+
+| Email | Password |
+|---|---|
+| priya@garden.com | garden123 |
+| arjun@garden.com | garden123 |
+| lakshmi@garden.com | garden123 |
+| ravi@garden.com | garden123 |
+
+Additional users: ananya, vikram, meera, suresh, divya, karthik, pooja, rajeshwari (all @garden.com / garden123)
+
+## Seed Data
+
+- 30 users across Bangalore neighbourhoods
+- 60 produce/plant listings across all categories
+- 40 exchange requests in various statuses
+- 40 completed reviews
+
 ## API Routes
 
 | Method | Route | Auth | Description |
@@ -96,7 +102,7 @@ Additional users: lakshmi, ravi, ananya, vikram, meera, suresh, divya, karthik, 
 | POST | /api/auth/register | No | Register new user |
 | POST | /api/auth/login | No | Login |
 | GET | /api/auth/me | Yes | Get current user |
-| GET | /api/listings | No | List all listings (with filters) |
+| GET | /api/listings | No | List listings (with filters) |
 | GET | /api/listings/:id | No | Get listing details |
 | POST | /api/listings | Yes | Create listing |
 | PUT | /api/listings/:id | Yes | Update listing |
@@ -111,7 +117,7 @@ Additional users: lakshmi, ravi, ananya, vikram, meera, suresh, divya, karthik, 
 | PATCH | /api/requests/:id/complete | Yes | Complete request |
 | PATCH | /api/requests/:id/cancel | Yes | Cancel request |
 | POST | /api/reviews | Yes | Create review |
-| GET | /api/reviews/user/:userId | No | Get user's reviews |
+| GET | /api/reviews/user/:userId | No | Get user reviews |
 | GET | /api/profile/:id | No | Get public profile |
 | PUT | /api/profile | Yes | Update own profile |
 | GET | /api/dashboard/stats | Yes | Get dashboard stats |

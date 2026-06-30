@@ -14,8 +14,6 @@
     "react-router-dom": "^6.30.0",
     "axios": "^1.7.9",
     "lucide-react": "^0.400.0",
-    "leaflet": "^1.9.4",
-    "react-leaflet": "^4.2.1",
     "clsx": "^2.1.1",
     "tailwind-merge": "^2.6.0"
   },

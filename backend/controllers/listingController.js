@@ -15,10 +15,7 @@ exports.getAllListings = async (req, res) => {
     }
 
     if (req.query.search) {
-      filter.$or = [
-        { produce_name: { $regex: req.query.search, $options: 'i' } },
-        { description: { $regex: req.query.search, $options: 'i' } },
-      ];
+      filter.search = req.query.search;
     }
 
     if (req.query.availability !== 'All') {
@@ -26,12 +23,10 @@ exports.getAllListings = async (req, res) => {
       filter.available_until = { $gte: new Date().toISOString().split('T')[0] };
     }
 
-    let listings = await Listing.find(filter)
-      .populate('user', 'name neighbourhood avg_rating total_reviews')
-      .sort({ created_at: -1 });
+    let listings = Listing.find(filter);
 
     if (req.query.neighbourhood && req.query.neighbourhood !== 'All') {
-      listings = listings.filter(l => l.user && l.user.neighbourhood === req.query.neighbourhood);
+      listings = listings.filter(l => l.grower_neighbourhood === req.query.neighbourhood);
     }
 
     const enhanced = listings.map(l => {
@@ -39,12 +34,27 @@ exports.getAllListings = async (req, res) => {
       const daysUntilExpiry = Math.ceil((new Date(l.available_until) - new Date()) / (1000 * 60 * 60 * 24));
 
       return {
-        ...l.toJSON(),
-        user_id: l.user ? l.user.id : null,
-        grower_name: l.user ? l.user.name : null,
-        grower_neighbourhood: l.user ? l.user.neighbourhood : null,
-        grower_rating: l.user ? l.user.avg_rating : 0,
-        grower_reviews: l.user ? l.user.total_reviews : 0,
+        id: l.id,
+        user_id: l.user_id,
+        produce_name: l.produce_name,
+        category: l.category,
+        description: l.description,
+        quantity: l.quantity,
+        unit: l.unit,
+        exchange_type: l.exchange_type,
+        swap_for: l.swap_for,
+        harvest_date: l.harvest_date,
+        available_until: l.available_until,
+        location_name: l.location_name,
+        latitude: l.latitude,
+        longitude: l.longitude,
+        status: l.status,
+        created_at: l.created_at,
+        updated_at: l.updated_at,
+        grower_name: l.grower_name,
+        grower_neighbourhood: l.grower_neighbourhood,
+        grower_rating: l.grower_rating || 0,
+        grower_reviews: l.grower_reviews || 0,
         days_since_harvest: daysSinceHarvest,
         days_until_expiry: daysUntilExpiry,
       };
@@ -58,8 +68,7 @@ exports.getAllListings = async (req, res) => {
 
 exports.getListingById = async (req, res) => {
   try {
-    const listing = await Listing.findById(req.params.id)
-      .populate('user', 'name neighbourhood avg_rating total_reviews bio total_listings total_exchanges created_at');
+    const listing = Listing.findById(req.params.id);
 
     if (!listing) {
       return res.status(404).json({ error: 'Listing not found' });
@@ -69,16 +78,31 @@ exports.getListingById = async (req, res) => {
     const daysUntilExpiry = Math.ceil((new Date(listing.available_until) - new Date()) / (1000 * 60 * 60 * 24));
 
     const enhanced = {
-      ...listing.toJSON(),
-      user_id: listing.user ? listing.user.id : null,
-      grower_name: listing.user ? listing.user.name : null,
-      grower_neighbourhood: listing.user ? listing.user.neighbourhood : null,
-      grower_rating: listing.user ? listing.user.avg_rating : 0,
-      grower_reviews: listing.user ? listing.user.total_reviews : 0,
-      grower_bio: listing.user ? listing.user.bio : '',
-      grower_joined: listing.user ? listing.user.created_at : null,
-      grower_listings: listing.user ? listing.user.total_listings : 0,
-      grower_exchanges: listing.user ? listing.user.total_exchanges : 0,
+      id: listing.id,
+      user_id: listing.user_id,
+      produce_name: listing.produce_name,
+      category: listing.category,
+      description: listing.description,
+      quantity: listing.quantity,
+      unit: listing.unit,
+      exchange_type: listing.exchange_type,
+      swap_for: listing.swap_for,
+      harvest_date: listing.harvest_date,
+      available_until: listing.available_until,
+      location_name: listing.location_name,
+      latitude: listing.latitude,
+      longitude: listing.longitude,
+      status: listing.status,
+      created_at: listing.created_at,
+      updated_at: listing.updated_at,
+      grower_name: listing.grower_name,
+      grower_neighbourhood: listing.grower_neighbourhood,
+      grower_rating: listing.grower_rating || 0,
+      grower_reviews: listing.grower_reviews || 0,
+      grower_bio: listing.grower_bio || '',
+      grower_joined: listing.grower_joined,
+      grower_listings: listing.grower_listings || 0,
+      grower_exchanges: listing.grower_exchanges || 0,
       days_since_harvest: daysSinceHarvest,
       days_until_expiry: daysUntilExpiry,
     };
@@ -93,11 +117,11 @@ exports.createListing = async (req, res) => {
   try {
     const { produce_name, category, description, quantity, unit, exchange_type, swap_for, harvest_date, available_until, location_name, latitude, longitude, status } = req.body;
 
-    if (!produce_name || !category || !quantity || !unit || !exchange_type || !harvest_date || !available_until || !location_name || latitude === undefined || longitude === undefined) {
+    if (!produce_name || !category || !quantity || !unit || !exchange_type || !harvest_date || !available_until || !location_name) {
       return res.status(400).json({ error: 'All required fields must be provided' });
     }
 
-    const listing = await Listing.create({
+    const listing = Listing.create({
       user: req.user.id,
       produce_name,
       category,
@@ -114,8 +138,8 @@ exports.createListing = async (req, res) => {
       status: status || 'Available',
     });
 
-    const totalListings = await Listing.countDocuments({ user: req.user.id });
-    await User.findByIdAndUpdate(req.user.id, { total_listings: totalListings });
+    const totalListings = Listing.count({ user: req.user.id });
+    User.update(req.user.id, { total_listings: totalListings });
 
     res.status(201).json(listing);
   } catch (err) {
@@ -125,11 +149,11 @@ exports.createListing = async (req, res) => {
 
 exports.updateListing = async (req, res) => {
   try {
-    const listing = await Listing.findById(req.params.id);
+    const listing = Listing.findById(req.params.id);
     if (!listing) {
       return res.status(404).json({ error: 'Listing not found' });
     }
-    if (listing.user.toString() !== req.user.id) {
+    if (listing.user_id !== req.user.id) {
       return res.status(403).json({ error: 'Not authorized to update this listing' });
     }
 
@@ -150,7 +174,7 @@ exports.updateListing = async (req, res) => {
     if (longitude !== undefined) updates.longitude = longitude;
     if (status) updates.status = status;
 
-    const updated = await Listing.findByIdAndUpdate(req.params.id, updates, { new: true });
+    const updated = Listing.update(req.params.id, updates);
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: 'Failed to update listing' });
@@ -159,18 +183,18 @@ exports.updateListing = async (req, res) => {
 
 exports.deleteListing = async (req, res) => {
   try {
-    const listing = await Listing.findById(req.params.id);
+    const listing = Listing.findById(req.params.id);
     if (!listing) {
       return res.status(404).json({ error: 'Listing not found' });
     }
-    if (listing.user.toString() !== req.user.id) {
+    if (listing.user_id !== req.user.id) {
       return res.status(403).json({ error: 'Not authorized to delete this listing' });
     }
 
-    await Listing.findByIdAndDelete(req.params.id);
+    Listing.delete(req.params.id);
 
-    const totalListings = await Listing.countDocuments({ user: req.user.id });
-    await User.findByIdAndUpdate(req.user.id, { total_listings: totalListings });
+    const totalListings = Listing.count({ user: req.user.id });
+    User.update(req.user.id, { total_listings: totalListings });
 
     res.json({ message: 'Listing deleted successfully' });
   } catch (err) {
@@ -180,15 +204,28 @@ exports.deleteListing = async (req, res) => {
 
 exports.getUserListings = async (req, res) => {
   try {
-    const listings = await Listing.find({ user: req.params.userId })
-      .populate('user', 'name neighbourhood')
-      .sort({ created_at: -1 });
+    const listings = Listing.find({ user: req.params.userId });
 
     const enhanced = listings.map(l => ({
-      ...l.toJSON(),
-      user_id: l.user ? l.user.id : null,
-      grower_name: l.user ? l.user.name : null,
-      grower_neighbourhood: l.user ? l.user.neighbourhood : null,
+      id: l.id,
+      user_id: l.user_id,
+      produce_name: l.produce_name,
+      category: l.category,
+      description: l.description,
+      quantity: l.quantity,
+      unit: l.unit,
+      exchange_type: l.exchange_type,
+      swap_for: l.swap_for,
+      harvest_date: l.harvest_date,
+      available_until: l.available_until,
+      location_name: l.location_name,
+      latitude: l.latitude,
+      longitude: l.longitude,
+      status: l.status,
+      created_at: l.created_at,
+      updated_at: l.updated_at,
+      grower_name: l.grower_name,
+      grower_neighbourhood: l.grower_neighbourhood,
     }));
 
     res.json(enhanced);
@@ -199,18 +236,18 @@ exports.getUserListings = async (req, res) => {
 
 exports.toggleStatus = async (req, res) => {
   try {
-    const listing = await Listing.findById(req.params.id);
+    const listing = Listing.findById(req.params.id);
     if (!listing) {
       return res.status(404).json({ error: 'Listing not found' });
     }
-    if (listing.user.toString() !== req.user.id) {
+    if (listing.user_id !== req.user.id) {
       return res.status(403).json({ error: 'Not authorized' });
     }
 
     const newStatus = listing.status === 'Available' ? 'Unavailable' : 'Available';
 
     if (newStatus === 'Unavailable') {
-      const pendingCount = await ExchangeRequest.countDocuments({
+      const pendingCount = ExchangeRequest.count({
         listing: req.params.id,
         status: { $in: ['Pending', 'Accepted'] },
       });
@@ -219,12 +256,7 @@ exports.toggleStatus = async (req, res) => {
       }
     }
 
-    const updated = await Listing.findByIdAndUpdate(
-      req.params.id,
-      { status: newStatus },
-      { new: true }
-    );
-
+    const updated = Listing.update(req.params.id, { status: newStatus });
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: 'Failed to toggle status' });

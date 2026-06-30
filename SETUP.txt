@@ -1,43 +1,29 @@
 === Local Produce & Garden Share Platform ===
 
 A community platform for neighbourhood-based produce and garden sharing,
-built with MongoDB + Express + React + Node (MERN).
+built with SQLite + Express + React + Node.
 
 
-=== DOCKER SETUP (Recommended) ===
+=== SETUP ===
 
-Prerequisites: Docker and Docker Compose
+Prerequisites: Node.js 20+
 
-1. Build and start all services:
+(No external database required — SQLite is embedded.)
 
-   docker compose up -d
+1. Install dependencies:
 
-2. Seed the database with sample data:
-
-   docker compose exec app node backend/db/seed.js
-
-3. Open http://localhost:5000 in your browser
-
-
-=== LOCAL DEVELOPMENT ===
-
-Prerequisites: Node.js 20+, MongoDB 7+
-
-1. Install MongoDB and ensure it's running on localhost:27017
-
-2. Install dependencies:
-
-   cd backend && npm install
-   cd ../frontend && npm install
-   cd ..
+     npm run install:all
 
 3. Seed the database:
 
-   npm run seed
+     npm run seed
 
 4. Start development servers (backend + frontend with HMR):
 
-   npm run dev
+     npm run dev
+
+   Backend API → http://localhost:5000
+   Frontend → http://localhost:5173
 
 
 === TEST CREDENTIALS ===
@@ -55,18 +41,20 @@ After seeding, use any of these accounts:
     controllers/     Express route handlers
     db/              Database connection + seed
     middleware/      JWT auth middleware
-    models/          Mongoose schemas
+    models/          SQLite query modules
     routes/          Express routes
   frontend/
     src/             React app
-  docker-compose.yml Docker services
+  package.json       Root scripts
 
 
 === ENVIRONMENT VARIABLES ===
 
+Backend configuration is in backend/.env:
+
   PORT             Server port (default: 5000)
-  JWT_SECRET       JWT signing secret
-  MONGODB_URI      MongoDB connection string
+  JWT_SECRET       JWT signing secret (required)
+  SQLITE_PATH      SQLite database file path (default: ./data/database.sqlite)
 
 
 === API ENDPOINTS ===

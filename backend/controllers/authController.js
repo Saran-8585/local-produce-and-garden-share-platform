@@ -16,13 +16,13 @@ exports.register = async (req, res) => {
       return res.status(400).json({ error: 'Password must be at least 6 characters' });
     }
 
-    const existing = await User.findOne({ email });
+    const existing = User.findByEmail(email);
     if (existing) {
       return res.status(409).json({ error: 'Email already registered' });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const user = await User.create({ name, email, password: hashedPassword, neighbourhood, bio: bio || '' });
+    const user = User.create({ name, email, password: hashedPassword, neighbourhood, bio: bio || '' });
 
     const token = jwt.sign(
       { id: user.id, email: user.email, name: user.name },
@@ -30,8 +30,7 @@ exports.register = async (req, res) => {
       { expiresIn: '7d' }
     );
 
-    const userData = await User.findById(user._id).select('-password');
-    res.status(201).json({ user: userData, token });
+    res.status(201).json({ user: User.toJSON(user), token });
   } catch (err) {
     res.status(500).json({ error: 'Server error during registration' });
   }
@@ -45,7 +44,7 @@ exports.login = async (req, res) => {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
-    const user = await User.findOne({ email });
+    const user = User.findByEmail(email);
     if (!user) {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
@@ -61,8 +60,7 @@ exports.login = async (req, res) => {
       { expiresIn: '7d' }
     );
 
-    const userData = await User.findById(user._id).select('-password');
-    res.json({ user: userData, token });
+    res.json({ user: User.toJSON(user), token });
   } catch (err) {
     res.status(500).json({ error: 'Server error during login' });
   }
@@ -70,11 +68,11 @@ exports.login = async (req, res) => {
 
 exports.getMe = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('-password');
+    const user = User.findById(req.user.id);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
-    res.json(user);
+    res.json(User.toJSON(user));
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }

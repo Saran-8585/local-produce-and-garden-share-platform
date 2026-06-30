@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { Leaf } from 'lucide-react';
 import api from '../utils/api';
 import { useToast } from '../components/Toast';
-import LocationPicker from '../components/LocationPicker';
 
 const CATEGORIES = ['Vegetables', 'Fruits', 'Herbs', 'Seeds & Saplings', 'Flowers', 'Other'];
 const UNITS = ['kg', 'g', 'bunch', 'pieces', 'pots', 'packets'];
@@ -16,22 +15,12 @@ export default function CreateListing() {
     exchange_type: 'Free', swap_for: '', harvest_date: '', available_until: '',
     location_name: '', latitude: '', longitude: '', status: 'Available',
   });
-  const [position, setPosition] = useState(null);
   const [loading, setLoading] = useState(false);
 
   const update = (field) => (e) => setForm((prev) => ({ ...prev, [field]: e.target.value }));
 
-  const handlePositionChange = (latlng) => {
-    setPosition(latlng);
-    setForm((prev) => ({ ...prev, latitude: latlng.lat, longitude: latlng.lng }));
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!position) {
-      addToast('Please set the location on the map', 'error');
-      return;
-    }
     setLoading(true);
     try {
       await api.post('/listings', { ...form, quantity: Number(form.quantity) });
@@ -126,12 +115,6 @@ export default function CreateListing() {
             <input type="text" value={form.location_name} onChange={update('location_name')} required
               className="w-full px-3 py-2.5 rounded-xl border border-gray-300 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none"
               placeholder="e.g., Koramangala 1st Block" />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Set Location on Map *</label>
-            <p className="text-xs text-gray-400 mb-2">Drag the pin or click on the map to set your location</p>
-            <LocationPicker position={position} onPositionChange={handlePositionChange} />
           </div>
 
           <div className="flex gap-3 pt-2">

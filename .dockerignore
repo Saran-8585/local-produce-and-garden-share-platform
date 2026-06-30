@@ -1,9 +1,0 @@
-node_modules
-.git
-.gitignore
-*.md
-*.txt
-data/
-backend/db/*.db
-backend/db/*.db-shm
-backend/db/*.db-wal

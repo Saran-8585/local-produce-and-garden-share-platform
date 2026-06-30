@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Leaf, Loader2 } from 'lucide-react';
 import api from '../utils/api';
 import { useToast } from '../components/Toast';
-import LocationPicker from '../components/LocationPicker';
 
 const CATEGORIES = ['Vegetables', 'Fruits', 'Herbs', 'Seeds & Saplings', 'Flowers', 'Other'];
 const UNITS = ['kg', 'g', 'bunch', 'pieces', 'pots', 'packets'];
@@ -13,7 +12,6 @@ export default function EditListing() {
   const navigate = useNavigate();
   const { addToast } = useToast();
   const [form, setForm] = useState(null);
-  const [position, setPosition] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -33,7 +31,6 @@ export default function EditListing() {
           swap_for: l.swap_for || '', harvest_date: l.harvest_date, available_until: l.available_until,
           location_name: l.location_name, status: l.status,
         });
-        setPosition({ lat: l.latitude, lng: l.longitude });
       } catch {
         addToast('Listing not found', 'error');
         navigate('/');
@@ -46,20 +43,13 @@ export default function EditListing() {
 
   const update = (field) => (e) => setForm((prev) => ({ ...prev, [field]: e.target.value }));
 
-  const handlePositionChange = (latlng) => {
-    setPosition(latlng);
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!position) { addToast('Please set the location', 'error'); return; }
     setSaving(true);
     try {
       await api.put(`/listings/${id}`, {
         ...form,
         quantity: Number(form.quantity),
-        latitude: position.lat,
-        longitude: position.lng,
       });
       addToast('Listing updated!');
       navigate(`/listings/${id}`);
@@ -152,11 +142,6 @@ export default function EditListing() {
             <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
             <input type="text" value={form.location_name} onChange={update('location_name')} required
               className="w-full px-3 py-2.5 rounded-xl border border-gray-300 focus:border-primary outline-none" />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Location on Map</label>
-            <LocationPicker position={position} onPositionChange={handlePositionChange} />
           </div>
 
           <div className="flex gap-3 pt-2">

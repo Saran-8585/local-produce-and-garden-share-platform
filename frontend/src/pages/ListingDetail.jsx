@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { MapPin, Calendar, Clock, MessageSquare, Edit3, Trash2, User, ToggleLeft, ToggleRight, ArrowLeft } from 'lucide-react';
+import { MapPin, Calendar, Clock, MessageSquare, Edit3, Trash2, ToggleLeft, ToggleRight, ArrowLeft } from 'lucide-react';
 import api from '../utils/api';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../components/Toast';
@@ -10,16 +10,6 @@ import StatusBadge from '../components/StatusBadge';
 import StarRating from '../components/StarRating';
 import LoadingSkeleton from '../components/LoadingSkeleton';
 import ConfirmDialog from '../components/ConfirmDialog';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
-import L from 'leaflet';
-
-const defaultIcon = L.divIcon({
-  className: 'custom-marker-detail',
-  html: `<div style="width: 20px; height: 20px; background: #15803d; border: 3px solid white; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`,
-  iconSize: [20, 20],
-  iconAnchor: [10, 10],
-});
-
 export default function ListingDetail() {
   const { id } = useParams();
   const { user } = useAuth();
@@ -108,9 +98,6 @@ export default function ListingDetail() {
   const isOwner = user && user.id === listing.user_id;
   const canRequest = user && !isOwner && listing.status === 'Available' && listing.days_until_expiry >= 0;
   const expired = listing.days_until_expiry < 0 || listing.status === 'Unavailable';
-
-  const approximateLat = listing.latitude + (Math.random() - 0.5) * 0.02;
-  const approximateLng = listing.longitude + (Math.random() - 0.5) * 0.02;
 
   return (
     <div className="pt-24 pb-12">
@@ -210,15 +197,13 @@ export default function ListingDetail() {
               </div>
             </div>
 
-            <div className="rounded-xl overflow-hidden border border-gray-200 mb-6">
-              <MapContainer center={[approximateLat, approximateLng]} zoom={13} style={{ height: '250px', width: '100%' }} className="z-0" dragging={false} zoomControl={false} scrollWheelZoom={false}>
-                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                <Marker position={[approximateLat, approximateLng]} icon={defaultIcon}>
-                  <Popup>{listing.location_name}</Popup>
-                </Marker>
-              </MapContainer>
-              <div className="px-4 py-2 bg-gray-50 text-sm text-gray-500 flex items-center gap-1">
-                <MapPin size={14} /> {listing.location_name} (approx. area)
+            <div className="bg-gray-50 rounded-xl p-4 border border-gray-200 mb-6 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center">
+                <MapPin size={20} />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-800">{listing.location_name}</p>
+                <p className="text-xs text-gray-500">{listing.grower_neighbourhood}</p>
               </div>
             </div>
 

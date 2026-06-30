@@ -14,24 +14,24 @@ exports.createReview = async (req, res) => {
       return res.status(400).json({ error: 'Rating must be between 1 and 5' });
     }
 
-    if (req.user.id === reviewee_id) {
+    if (req.user.id == reviewee_id) {
       return res.status(400).json({ error: 'Cannot review yourself' });
     }
 
-    const exchange = await ExchangeRequest.findOne({ _id: exchange_id, status: 'Completed' });
+    const exchange = ExchangeRequest.findOne({ listing: exchange_id, status: 'Completed' });
     if (!exchange) {
       return res.status(404).json({ error: 'Completed exchange not found' });
     }
 
-    if (exchange.requester.toString() !== req.user.id && exchange.owner.toString() !== req.user.id) {
+    if (exchange.requester_id !== req.user.id && exchange.owner_id !== req.user.id) {
       return res.status(403).json({ error: 'Not part of this exchange' });
     }
 
-    if (exchange.requester.toString() !== reviewee_id && exchange.owner.toString() !== reviewee_id) {
+    if (exchange.requester_id !== reviewee_id && exchange.owner_id !== reviewee_id) {
       return res.status(400).json({ error: 'Reviewee must be the other party in the exchange' });
     }
 
-    const existing = await Review.findOne({
+    const existing = Review.findOne({
       exchange: exchange_id,
       reviewer: req.user.id,
       reviewee: reviewee_id,
@@ -41,7 +41,7 @@ exports.createReview = async (req, res) => {
       return res.status(400).json({ error: 'You have already reviewed this exchange' });
     }
 
-    const review = await Review.create({
+    const review = Review.create({
       exchange: exchange_id,
       reviewer: req.user.id,
       reviewee: reviewee_id,
@@ -49,17 +49,15 @@ exports.createReview = async (req, res) => {
       comment: comment || '',
     });
 
-    const stats = await Review.aggregate([
-      { $match: { reviewee: review.reviewee } },
-      { $group: { _id: null, avg: { $avg: '$rating' }, count: { $sum: 1 } } },
-    ]);
-
-    const { avg = 0, count = 0 } = stats[0] || {};
-    await User.findByIdAndUpdate(reviewee_id, { avg_rating: Math.round(avg * 10) / 10, total_reviews: count });
+    const stats = Review.getRatingStats(reviewee_id);
+    User.update(reviewee_id, {
+      avg_rating: Math.round(stats.avg * 10) / 10,
+      total_reviews: stats.count,
+    });
 
     res.status(201).json(review);
   } catch (err) {
-    if (err.code === 11000) {
+    if (err.message && err.message.includes('UNIQUE')) {
       return res.status(400).json({ error: 'You have already reviewed this exchange' });
     }
     res.status(500).json({ error: 'Failed to create review' });
@@ -68,21 +66,20 @@ exports.createReview = async (req, res) => {
 
 exports.getUserReviews = async (req, res) => {
   try {
-    const reviews = await Review.find({ reviewee: req.params.userId })
-      .populate('reviewer', 'name neighbourhood')
-      .populate({
-        path: 'exchange',
-        select: 'listing',
-        populate: { path: 'listing', select: 'produce_name' },
-      })
-      .sort({ created_at: -1 });
+    const reviews = Review.findWithReviewer({ reviewee: req.params.userId });
 
     const enhanced = reviews.map(r => ({
-      ...r.toJSON(),
-      reviewer_name: r.reviewer ? r.reviewer.name : null,
-      reviewer_neighbourhood: r.reviewer ? r.reviewer.neighbourhood : null,
-      listing_id: r.exchange && r.exchange.listing ? r.exchange.listing.id : null,
-      produce_name: r.exchange && r.exchange.listing ? r.exchange.listing.produce_name : null,
+      id: r.id,
+      exchange_id: r.exchange_id,
+      reviewer_id: r.reviewer_id,
+      reviewee_id: r.reviewee_id,
+      rating: r.rating,
+      comment: r.comment,
+      created_at: r.created_at,
+      reviewer_name: r.reviewer_name,
+      reviewer_neighbourhood: r.reviewer_neighbourhood,
+      listing_id: r.listing_id,
+      produce_name: r.produce_name,
     }));
 
     res.json(enhanced);

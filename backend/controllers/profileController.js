@@ -2,11 +2,11 @@ const User = require('../models/User');
 
 exports.getProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.params.id).select('-password');
+    const user = User.findById(req.params.id);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
-    res.json(user);
+    res.json(User.toJSON(user));
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch profile' });
   }
@@ -21,8 +21,8 @@ exports.updateProfile = async (req, res) => {
     if (neighbourhood !== undefined) updates.neighbourhood = neighbourhood;
     if (bio !== undefined) updates.bio = bio;
 
-    const user = await User.findByIdAndUpdate(req.user.id, updates, { new: true }).select('-password');
-    res.json(user);
+    const user = User.update(req.user.id, updates);
+    res.json(User.toJSON(user));
   } catch (err) {
     res.status(500).json({ error: 'Failed to update profile' });
   }

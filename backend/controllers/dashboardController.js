@@ -1,4 +1,4 @@
-const mongoose = require('mongoose');
+const { getDB } = require('../db/database');
 const Listing = require('../models/Listing');
 const ExchangeRequest = require('../models/ExchangeRequest');
 const Review = require('../models/Review');
@@ -6,36 +6,30 @@ const Review = require('../models/Review');
 exports.getStats = async (req, res) => {
   try {
     const todayStr = new Date().toISOString().split('T')[0];
-    const userId = new mongoose.Types.ObjectId(req.user.id);
+    const userId = req.user.id;
 
-    const activeListings = await Listing.countDocuments({
+    const activeListings = Listing.count({
       user: userId,
       status: 'Available',
       available_until: { $gte: todayStr },
     });
 
-    const completedExchanges = await ExchangeRequest.countDocuments({
+    const completedExchanges = ExchangeRequest.count({
       $or: [{ requester: userId }, { owner: userId }],
       status: 'Completed',
     });
 
-    const givenFreeResult = await ExchangeRequest.aggregate([
-      { $match: { owner: userId, status: 'Completed' } },
-      { $lookup: { from: 'listings', localField: 'listing', foreignField: '_id', as: 'listingDoc' } },
-      { $unwind: '$listingDoc' },
-      { $match: { 'listingDoc.exchange_type': 'Free' } },
-      { $count: 'count' },
-    ]);
-    const givenFree = givenFreeResult[0]?.count || 0;
+    const givenFree = getDB().prepare(`
+      SELECT COUNT(*) as count FROM exchange_requests er
+      JOIN listings l ON er.listing_id = l.id
+      WHERE er.owner_id = ? AND er.status = 'Completed' AND l.exchange_type = 'Free'
+    `).get(userId).count;
 
-    const receivedFreeResult = await ExchangeRequest.aggregate([
-      { $match: { requester: userId, status: 'Completed' } },
-      { $lookup: { from: 'listings', localField: 'listing', foreignField: '_id', as: 'listingDoc' } },
-      { $unwind: '$listingDoc' },
-      { $match: { 'listingDoc.exchange_type': 'Free' } },
-      { $count: 'count' },
-    ]);
-    const receivedFree = receivedFreeResult[0]?.count || 0;
+    const receivedFree = getDB().prepare(`
+      SELECT COUNT(*) as count FROM exchange_requests er
+      JOIN listings l ON er.listing_id = l.id
+      WHERE er.requester_id = ? AND er.status = 'Completed' AND l.exchange_type = 'Free'
+    `).get(userId).count;
 
     res.json({
       activeListings,
@@ -50,43 +44,51 @@ exports.getStats = async (req, res) => {
 
 exports.getHistory = async (req, res) => {
   try {
-    const requests = await ExchangeRequest.find({
-      $or: [{ requester: req.user.id }, { owner: req.user.id }],
-    })
-      .populate('listing', 'produce_name category exchange_type quantity unit')
-      .populate('owner', 'name')
-      .populate('requester', 'name')
-      .populate('offered_listing', 'produce_name')
-      .sort({ updated_at: -1 });
+    const requests = getDB().prepare(`
+      SELECT er.*, 
+             l.produce_name, l.category, l.exchange_type, l.quantity, l.unit,
+             owner.name AS owner_name,
+             requester.name AS requester_name,
+             offered.produce_name AS offered_produce_name
+      FROM exchange_requests er
+      JOIN listings l ON er.listing_id = l.id
+      JOIN users owner ON er.owner_id = owner.id
+      JOIN users requester ON er.requester_id = requester.id
+      LEFT JOIN listings offered ON er.offered_listing_id = offered.id
+      WHERE er.requester_id = ? OR er.owner_id = ?
+      ORDER BY er.updated_at DESC
+    `).all(req.user.id, req.user.id);
 
-    const exchangeIds = requests.map(r => r._id);
-    const reviewedExchanges = await Review.find({
-      exchange: { $in: exchangeIds },
-      reviewer: req.user.id,
-    }).select('exchange');
+    const exchangeIds = requests.map(r => r.id);
+    let reviewedSet = new Set();
+    if (exchangeIds.length > 0) {
+      const placeholders = exchangeIds.map(() => '?').join(',');
+      const reviewedExchanges = getDB().prepare(`
+        SELECT exchange_id FROM reviews WHERE exchange_id IN (${placeholders}) AND reviewer_id = ?
+      `).all(...exchangeIds, req.user.id);
+      reviewedSet = new Set(reviewedExchanges.map(r => r.exchange_id));
+    }
 
-    const reviewedSet = new Set(reviewedExchanges.map(r => r.exchange.toString()));
-
-    const history = requests.map(r => {
-      const json = r.toJSON();
-      const isOwner = json.owner && json.owner.id === req.user.id;
-
-      return {
-        ...json,
-        listing_id: json.listing ? json.listing.id : null,
-        produce_name: json.listing ? json.listing.produce_name : null,
-        category: json.listing ? json.listing.category : null,
-        exchange_type: json.listing ? json.listing.exchange_type : null,
-        quantity: json.listing ? json.listing.quantity : null,
-        unit: json.listing ? json.listing.unit : null,
-        owner_name: json.owner ? json.owner.name : null,
-        owner_id: json.owner ? json.owner.id : null,
-        requester_name: json.requester ? json.requester.name : null,
-        requester_id: json.requester ? json.requester.id : null,
-        offered_produce_name: json.offered_listing ? json.offered_listing.produce_name : null,
-        has_reviewed: reviewedSet.has(r._id.toString()),
-      };
-    });
+    const history = requests.map(r => ({
+      id: r.id,
+      listing_id: r.listing_id,
+      requester_id: r.requester_id,
+      owner_id: r.owner_id,
+      message: r.message,
+      offered_listing_id: r.offered_listing_id,
+      status: r.status,
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+      produce_name: r.produce_name,
+      category: r.category,
+      exchange_type: r.exchange_type,
+      quantity: r.quantity,
+      unit: r.unit,
+      owner_name: r.owner_name,
+      requester_name: r.requester_name,
+      offered_produce_name: r.offered_produce_name,
+      has_reviewed: reviewedSet.has(r.id),
+    }));
 
     res.json(history);
   } catch (err) {

@@ -1,41 +1,26 @@
 # Local Produce & Garden Share Platform
 
-A community platform for neighbourhood-based produce and garden sharing, built with the MERN stack (MongoDB + Express + React + Node).
+A community platform for neighbourhood-based produce and garden sharing, built with SQLite + Express + React + Node.
 
 ## Setup & Run
 
-### Option 1: Docker (Recommended)
+**Prerequisites:** Node.js 20+
 
-**Prerequisites:** Docker and Docker Compose
-
-```bash
-# Build and start all services
-docker compose up -d
-
-# Seed the database with sample data
-docker compose exec app node backend/db/seed.js
-
-# Open http://localhost:5000
-```
-
-### Option 2: Local Development
-
-**Prerequisites:** Node.js 20+, MongoDB 7+
+> No external database required — SQLite is embedded.
 
 ```bash
-# 1. Install MongoDB and ensure it's running on localhost:27017
-
-# 2. Install dependencies
-cd backend && npm install
-cd ../frontend && npm install
-cd ..
+# 1. Install dependencies
+npm run install:all
 
 # 3. Seed the database
 npm run seed
 
-# 4. Start development servers (backend + frontend with HMR)
+# 4. Start development servers
 npm run dev
 ```
+
+- Backend API: http://localhost:5000
+- Frontend: http://localhost:5173
 
 ## Test Credentials
 
@@ -55,12 +40,22 @@ After seeding, use any of these accounts:
 │   ├── controllers/     # Express route handlers
 │   ├── db/              # Database connection + seed
 │   ├── middleware/       # JWT auth middleware
-│   ├── models/          # Mongoose schemas
+│   ├── models/          # SQLite query modules
 │   └── routes/          # Express routes
 ├── frontend/
 │   └── src/             # React app
-└── docker-compose.yml   # Docker services
+└── package.json         # Root scripts
 ```
+
+## Environment Variables
+
+Backend configuration is in `backend/.env`:
+
+| Variable | Default | Description |
+|---|---|---|
+| `PORT` | `5000` | Backend server port |
+| `JWT_SECRET` | *(required)* | JWT signing secret |
+| `SQLITE_PATH` | `./data/database.sqlite` | SQLite database file path |
 
 ## API Endpoints
 

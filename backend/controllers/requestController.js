@@ -10,12 +10,12 @@ exports.createRequest = async (req, res) => {
       return res.status(400).json({ error: 'Listing ID is required' });
     }
 
-    const listing = await Listing.findById(listing_id);
+    const listing = Listing.findById(listing_id);
     if (!listing) {
       return res.status(404).json({ error: 'Listing not found' });
     }
 
-    if (listing.user.toString() === req.user.id) {
+    if (listing.user_id === req.user.id) {
       return res.status(400).json({ error: 'Cannot request your own listing' });
     }
 
@@ -28,11 +28,11 @@ exports.createRequest = async (req, res) => {
     }
 
     if (offered_listing_id) {
-      const offered = await Listing.findById(offered_listing_id);
+      const offered = Listing.findById(offered_listing_id);
       if (!offered) {
         return res.status(404).json({ error: 'Offered listing not found' });
       }
-      if (offered.user.toString() !== req.user.id) {
+      if (offered.user_id !== req.user.id) {
         return res.status(400).json({ error: 'Offered listing must belong to you' });
       }
       if (offered.status !== 'Available') {
@@ -40,7 +40,7 @@ exports.createRequest = async (req, res) => {
       }
     }
 
-    const existing = await ExchangeRequest.findOne({
+    const existing = ExchangeRequest.findOne({
       listing: listing_id,
       requester: req.user.id,
       status: { $in: ['Pending', 'Accepted'] },
@@ -50,10 +50,10 @@ exports.createRequest = async (req, res) => {
       return res.status(400).json({ error: 'You already have a pending request for this listing' });
     }
 
-    const request = await ExchangeRequest.create({
+    const request = ExchangeRequest.create({
       listing: listing_id,
       requester: req.user.id,
-      owner: listing.user,
+      owner: listing.user_id,
       message: message || '',
       offered_listing: offered_listing_id || null,
       status: 'Pending',
@@ -67,21 +67,24 @@ exports.createRequest = async (req, res) => {
 
 exports.getSentRequests = async (req, res) => {
   try {
-    const requests = await ExchangeRequest.find({ requester: req.user.id })
-      .populate('listing', 'produce_name category exchange_type')
-      .populate('owner', 'name neighbourhood')
-      .populate('offered_listing', 'produce_name')
-      .sort({ created_at: -1 });
+    const requests = ExchangeRequest.findWithListings({ requester: req.user.id });
 
     const enhanced = requests.map(r => ({
-      ...r.toJSON(),
-      listing_id: r.listing ? r.listing.id : null,
-      produce_name: r.listing ? r.listing.produce_name : null,
-      category: r.listing ? r.listing.category : null,
-      exchange_type: r.listing ? r.listing.exchange_type : null,
-      owner_name: r.owner ? r.owner.name : null,
-      owner_neighbourhood: r.owner ? r.owner.neighbourhood : null,
-      offered_produce_name: r.offered_listing ? r.offered_listing.produce_name : null,
+      id: r.id,
+      listing_id: r.listing_id,
+      requester_id: r.requester_id,
+      owner_id: r.owner_id,
+      message: r.message,
+      offered_listing_id: r.offered_listing_id,
+      status: r.status,
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+      produce_name: r.produce_name,
+      category: r.category,
+      exchange_type: r.exchange_type,
+      owner_name: r.owner_name,
+      owner_neighbourhood: r.owner_neighbourhood,
+      offered_produce_name: r.offered_produce_name,
     }));
 
     res.json(enhanced);
@@ -92,21 +95,24 @@ exports.getSentRequests = async (req, res) => {
 
 exports.getReceivedRequests = async (req, res) => {
   try {
-    const requests = await ExchangeRequest.find({ owner: req.user.id })
-      .populate('listing', 'produce_name category exchange_type')
-      .populate('requester', 'name neighbourhood')
-      .populate('offered_listing', 'produce_name')
-      .sort({ created_at: -1 });
+    const requests = ExchangeRequest.findWithListings({ owner: req.user.id });
 
     const enhanced = requests.map(r => ({
-      ...r.toJSON(),
-      listing_id: r.listing ? r.listing.id : null,
-      produce_name: r.listing ? r.listing.produce_name : null,
-      category: r.listing ? r.listing.category : null,
-      exchange_type: r.listing ? r.listing.exchange_type : null,
-      requester_name: r.requester ? r.requester.name : null,
-      requester_neighbourhood: r.requester ? r.requester.neighbourhood : null,
-      offered_produce_name: r.offered_listing ? r.offered_listing.produce_name : null,
+      id: r.id,
+      listing_id: r.listing_id,
+      requester_id: r.requester_id,
+      owner_id: r.owner_id,
+      message: r.message,
+      offered_listing_id: r.offered_listing_id,
+      status: r.status,
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+      produce_name: r.produce_name,
+      category: r.category,
+      exchange_type: r.exchange_type,
+      requester_name: r.requester_name,
+      requester_neighbourhood: r.requester_neighbourhood,
+      offered_produce_name: r.offered_produce_name,
     }));
 
     res.json(enhanced);
@@ -117,26 +123,25 @@ exports.getReceivedRequests = async (req, res) => {
 
 exports.acceptRequest = async (req, res) => {
   try {
-    const request = await ExchangeRequest.findById(req.params.id);
+    const request = ExchangeRequest.findById(req.params.id);
     if (!request) {
       return res.status(404).json({ error: 'Request not found' });
     }
-    if (request.owner.toString() !== req.user.id) {
+    if (request.owner_id !== req.user.id) {
       return res.status(403).json({ error: 'Only the listing owner can accept requests' });
     }
     if (request.status !== 'Pending') {
       return res.status(400).json({ error: 'Can only accept pending requests' });
     }
 
-    request.status = 'Accepted';
-    await request.save();
+    ExchangeRequest.update(req.params.id, { status: 'Accepted' });
 
-    if (request.offered_listing) {
-      await Listing.findByIdAndUpdate(request.offered_listing, { status: 'Unavailable' });
+    if (request.offered_listing_id) {
+      Listing.update(request.offered_listing_id, { status: 'Unavailable' });
     }
-    await Listing.findByIdAndUpdate(request.listing, { status: 'Unavailable' });
+    Listing.update(request.listing_id, { status: 'Unavailable' });
 
-    res.json(request);
+    res.json({ ...request, status: 'Accepted' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to accept request' });
   }
@@ -144,21 +149,20 @@ exports.acceptRequest = async (req, res) => {
 
 exports.declineRequest = async (req, res) => {
   try {
-    const request = await ExchangeRequest.findById(req.params.id);
+    const request = ExchangeRequest.findById(req.params.id);
     if (!request) {
       return res.status(404).json({ error: 'Request not found' });
     }
-    if (request.owner.toString() !== req.user.id) {
+    if (request.owner_id !== req.user.id) {
       return res.status(403).json({ error: 'Only the listing owner can decline requests' });
     }
     if (request.status !== 'Pending') {
       return res.status(400).json({ error: 'Can only decline pending requests' });
     }
 
-    request.status = 'Declined';
-    await request.save();
+    ExchangeRequest.update(req.params.id, { status: 'Declined' });
 
-    res.json(request);
+    res.json({ ...request, status: 'Declined' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to decline request' });
   }
@@ -166,30 +170,29 @@ exports.declineRequest = async (req, res) => {
 
 exports.completeRequest = async (req, res) => {
   try {
-    const request = await ExchangeRequest.findById(req.params.id);
+    const request = ExchangeRequest.findById(req.params.id);
     if (!request) {
       return res.status(404).json({ error: 'Request not found' });
     }
-    if (request.requester.toString() !== req.user.id && request.owner.toString() !== req.user.id) {
+    if (request.requester_id !== req.user.id && request.owner_id !== req.user.id) {
       return res.status(403).json({ error: 'Not authorized' });
     }
     if (request.status !== 'Accepted') {
       return res.status(400).json({ error: 'Can only complete accepted requests' });
     }
 
-    request.status = 'Completed';
-    await request.save();
+    ExchangeRequest.update(req.params.id, { status: 'Completed' });
 
-    const userIds = [request.requester.toString(), request.owner.toString()];
+    const userIds = [request.requester_id, request.owner_id];
     for (const uid of userIds) {
-      const totalExchanges = await ExchangeRequest.countDocuments({
+      const totalExchanges = ExchangeRequest.count({
         $or: [{ requester: uid }, { owner: uid }],
         status: 'Completed',
       });
-      await User.findByIdAndUpdate(uid, { total_exchanges: totalExchanges });
+      User.update(uid, { total_exchanges: totalExchanges });
     }
 
-    res.json(request);
+    res.json({ ...request, status: 'Completed' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to complete request' });
   }
@@ -197,21 +200,20 @@ exports.completeRequest = async (req, res) => {
 
 exports.cancelRequest = async (req, res) => {
   try {
-    const request = await ExchangeRequest.findById(req.params.id);
+    const request = ExchangeRequest.findById(req.params.id);
     if (!request) {
       return res.status(404).json({ error: 'Request not found' });
     }
-    if (request.requester.toString() !== req.user.id) {
+    if (request.requester_id !== req.user.id) {
       return res.status(403).json({ error: 'Only the requester can cancel' });
     }
     if (request.status !== 'Pending') {
       return res.status(400).json({ error: 'Can only cancel pending requests' });
     }
 
-    request.status = 'Cancelled';
-    await request.save();
+    ExchangeRequest.update(req.params.id, { status: 'Cancelled' });
 
-    res.json(request);
+    res.json({ ...request, status: 'Cancelled' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to cancel request' });
   }
