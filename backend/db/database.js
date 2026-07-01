@@ -1,23 +1,97 @@
-const Database = require('better-sqlite3');
+const initSqlJs = require('sql.js');
 const path = require('path');
 const fs = require('fs');
 
 const DB_PATH = process.env.SQLITE_PATH || path.join(__dirname, '..', 'data', 'database.sqlite');
 
+let inner;
 let db;
 
-function getDB() {
-  if (!db) {
-    fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-    db = new Database(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    db.pragma('foreign_keys = ON');
-    initSchema();
+function normalizeParams(args) {
+  if (args.length === 1 && typeof args[0] === 'object' && !Array.isArray(args[0]) && args[0] !== null) {
+    return args[0];
   }
+  return args;
+}
+
+class StatementWrapper {
+  #inner;
+  #sql;
+
+  constructor(sqlJsDb, sql) {
+    this.#inner = sqlJsDb;
+    this.#sql = sql;
+  }
+
+  run(...args) {
+    const params = normalizeParams(args);
+    this.#inner.run(this.#sql, params === undefined ? undefined : params);
+    const meta = this.#inner.exec('SELECT last_insert_rowid() as id, changes() as changes');
+    saveDb();
+    const [id, changes] = meta[0].values[0];
+    return { lastInsertRowid: Number(id), changes: Number(changes) };
+  }
+
+  get(...args) {
+    const params = normalizeParams(args);
+    const stmt = this.#inner.prepare(this.#sql);
+    stmt.bind(params);
+    let row;
+    if (stmt.step()) row = stmt.getAsObject();
+    stmt.free();
+    return row;
+  }
+
+  all(...args) {
+    const params = normalizeParams(args);
+    const stmt = this.#inner.prepare(this.#sql);
+    stmt.bind(params);
+    const rows = [];
+    while (stmt.step()) rows.push(stmt.getAsObject());
+    stmt.free();
+    return rows;
+  }
+}
+
+function saveDb() {
+  try {
+    const data = inner.export();
+    fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+    fs.writeFileSync(DB_PATH, Buffer.from(data));
+  } catch (err) {
+    console.error('Failed to save database:', err.message);
+  }
+}
+
+function getDB() {
+  if (!db) throw new Error('Database not initialized. Call connectDB() first.');
   return db;
 }
 
-function initSchema() {
+async function connectDB() {
+  if (db) return db;
+
+  const SQL = await initSqlJs();
+
+  if (fs.existsSync(DB_PATH)) {
+    inner = new SQL.Database(fs.readFileSync(DB_PATH));
+  } else {
+    fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+    inner = new SQL.Database();
+  }
+
+  db = {
+    prepare(sql) { return new StatementWrapper(inner, sql); },
+    exec(sql) {
+      inner.exec(sql);
+      saveDb();
+    },
+    pragma(str) {
+      try { inner.exec(`PRAGMA ${str}`); } catch {}
+    },
+  };
+
+  db.pragma('foreign_keys = ON');
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -86,11 +160,7 @@ function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_exchange_requests_status ON exchange_requests(status);
     CREATE INDEX IF NOT EXISTS idx_reviews_reviewee ON reviews(reviewee_id);
   `);
-}
 
-async function connectDB() {
-  getDB();
-  console.log('SQLite connected successfully');
   return db;
 }
 

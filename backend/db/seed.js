@@ -1,9 +1,8 @@
 const bcrypt = require('bcryptjs');
-const { getDB } = require('./database');
-
-const db = getDB();
+const { connectDB } = require('./database');
 
 async function seed() {
+  const db = await connectDB();
   console.log('Connected to SQLite');
 
   db.exec('DELETE FROM reviews');
